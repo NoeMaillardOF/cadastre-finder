@@ -5,14 +5,13 @@
   export let results = [];
   export let selectedParcel = null;
   
-  let map;
+  let map = null;
   let geoJsonLayer = null;
   let selectedParcelLayer = null;
   let mapContainer;
   let isClickingFeature = false;
   let L; // Store Leaflet instance
   let baseLayers = {};
-  let currentBaseLayer = 'osm'; // 'osm' or 'satellite'
   
   // Initialize the map when the component mounts
   onMount(() => {
@@ -31,12 +30,27 @@
         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
       });
       
-      // Initialize the map
-      map = L.map(mapContainer, {
-        center: [46.603354, 1.888334],
+      // Initialize the map with proper options
+      const center = L.latLng(46.603354, 1.888334);
+      
+      const options = {
+        center: center,
         zoom: 13,
-        zoomControl: true
-      });
+        zoomControl: true,
+        preferCanvas: true // Better performance for large numbers of markers
+      };
+      
+      // Add mobile-specific options
+      if (L.Browser.mobile) {
+        options.dragging = false;
+        options.tap = false;
+        options.tapTolerance = 15;
+      }
+      
+      map = L.map(mapContainer, options);
+      
+      // Store map instance globally for access from App.svelte
+      window.leafletMap = map;
       
       // Create base layers
       baseLayers = {
@@ -51,7 +65,7 @@
       };
       
       // Add the default base layer
-      baseLayers['OpenStreetMap'].addTo(map);
+      baseLayers['Satellite'].addTo(map);
       
       // Add layer control
       L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
@@ -81,6 +95,7 @@
         map.off();
         map.remove();
         map = null;
+delete window.leafletMap;
       }
     };
   });
@@ -142,20 +157,78 @@
     };
   }
   
+  // Function to get address from coordinates using Nominatim
+  async function getAddressFromCoords(lat, lon) {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`);
+      const data = await response.json();
+      
+      if (data.address) {
+        const { road, house_number, postcode, city, village, town } = data.address;
+        const addressParts = [];
+        
+        if (road) {
+          addressParts.push(house_number ? `${road} ${house_number}` : road);
+        }
+        if (postcode) addressParts.push(postcode);
+        if (city || town || village) addressParts.push(city || town || village);
+        
+        return addressParts.join(', ');
+      }
+      return 'Address not available';
+    } catch (error) {
+      console.error('Error fetching address:', error);
+      return 'Address not available';
+    }
+  }
+
   // Function to handle feature click
   function onEachFeature(feature, layer) {
     if (feature.properties) {
       const { surface_parcelle, section, number } = feature.properties;
-      const popupContent = `
-        <div>
-          <strong>Parcel ID:</strong> ${feature.id || 'N/A'}<br>
-          <strong>Area:</strong> ${surface_parcelle || 'N/A'} m²<br>
-          <strong>Section:</strong> ${section || 'N/A'}<br>
-          <strong>Number:</strong> ${number || 'N/A'}
+      
+      // Create a basic popup first (will be updated with address)
+      const initialPopupContent = `
+        <div style="min-width: 180px; max-width: 250px;">
+          <div>Loading address...</div>
         </div>
       `;
       
-      layer.bindPopup(popupContent);
+      // Bind the initial popup
+      layer.bindPopup(initialPopupContent);
+      
+      // Fetch address and update popup content asynchronously
+      (async () => {
+        try {
+          const center = layer.getBounds().getCenter();
+          const address = await getAddressFromCoords(center.lat, center.lng);
+          
+          const popupContent = `
+            <div style="min-width: 180px; max-width: 250px;">
+              <div style="margin-bottom: 6px; font-weight: 600; font-size: 1.05em;">
+                ${address}
+              </div>
+              <div style="border-top: 1px solid #eee; padding-top: 4px; margin-bottom: 4px;">
+                <div><strong>Parcel ID:</strong> ${feature.id || 'N/A'}</div>
+                <div><strong>Area:</strong> ${surface_parcelle ? `${surface_parcelle} m²` : 'N/A'}</div>
+                <div><strong>Section:</strong> ${section || 'N/A'}</div>
+                ${number ? `<div><strong>Number:</strong> ${number}</div>` : ''}
+              </div>
+            </div>
+          `;
+          
+          // Update the popup content
+          layer.setPopupContent(popupContent);
+          
+          // If the popup is currently open, update it
+          if (layer.isPopupOpen()) {
+            layer.togglePopup();
+            setTimeout(() => layer.togglePopup(), 10);
+          }
+        } catch (error) {
+          console.error('Error updating popup:', error);
+        }
+      })();
       
       // Handle click on the feature
       layer.on('click', (e) => {
@@ -174,7 +247,7 @@
         });
         window.dispatchEvent(event);
         
-        // Stop event propagation and open popup
+        // Stop event propagation
         const leafletEvent = e.originalEvent?.view?.L?.DomEvent || e;
         if (leafletEvent.stopPropagation) {
           leafletEvent.stopPropagation();
