@@ -10,7 +10,7 @@
   let inseeCode = "";
   let communeName = "";
   const MIN_SIZE = 0;
-  const MAX_SIZE = 3000;
+  const MAX_SIZE = 8000;
   let minThumb = MIN_SIZE;
   let maxThumb = MAX_SIZE;
   let results = [];
@@ -311,7 +311,9 @@
 
         <div class="form-group range-slider-container">
           <div class="range-display">
-            <span class="min-value">{Math.round(minThumb)}–{Math.round(maxThumb)} m²</span>
+            <span class="min-value"
+              >{Math.round(minThumb)}–{Math.round(maxThumb)} m²</span
+            >
           </div>
           <DoubleSlider
             min={MIN_SIZE}
@@ -378,7 +380,6 @@
   <!-- Results Carousel -->
   {#if results.length > 0}
     <div class="carousel-container {!carouselOpen ? 'collapsed' : ''}">
-
       <div
         class="carousel-track"
         style="transform: translateX(-${currentSlide * 100}%)"
@@ -394,7 +395,9 @@
           >
             <div class="parcel-card">
               <div class="parcel-area">
-                <span class="area-value">{parcel.properties?.surface_parcelle || "N/A"}</span>
+                <span class="area-value"
+                  >{parcel.properties?.surface_parcelle || "N/A"}</span
+                >
                 <span class="area-unit">m²</span>
               </div>
               <div class="parcel-details">
@@ -404,7 +407,6 @@
           </div>
         {/each}
       </div>
-
     </div>
   {/if}
 </main>
@@ -434,7 +436,6 @@
     width: 100%;
     height: 100%;
   }
-
 
   /* Search Form Overlay */
   .search-form-overlay {
@@ -672,11 +673,11 @@
     height: 80px;
     display: flex;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.95);
+    background: #ffffff; /* Solid white background for better compatibility */
     border-radius: 8px;
-    backdrop-filter: blur(4px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     margin: 4px 0;
+    color: #1a202c; /* Set default text color */
   }
 
   .carousel-slide:focus {
@@ -694,31 +695,42 @@
     align-items: center;
     gap: 12px;
     flex: 1;
+    color: inherit; /* Inherit color from parent */
   }
 
   .parcel-card:hover,
   .carousel-slide.active .parcel-card {
     transform: translateY(-1px);
   }
-  
+
   .carousel-slide.active {
-    background: rgba(255, 255, 255, 0.98);
+    background: #ffffff; /* Solid white for better compatibility */
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
     border: 1px solid #e2e8f0;
+    color: #1a202c; /* Ensure text color is set */
   }
 
-  .parcel-card h3 {
-    margin: 0 0 4px 0;
-    color: #1a202c;
-    font-size: 0.9375rem;
-    font-weight: 600;
+  .parcel-area {
+    background: #f0f9ff;
+    border-radius: 6px;
+    padding: 6px 10px;
+    min-width: 70px;
+    text-align: center;
+    border: 1px solid #e0f2fe;
+    color: #0369a1; /* Ensure text color is set for all children */
   }
 
-  .parcel-card p {
-    margin: 2px 0;
-    color: #4a5568;
-    font-size: 0.8125rem;
-    opacity: 0.9;
+  .parcel-id {
+    font-weight: 500;
+    color: #1e293b !important; /* Force color to ensure visibility */
+    font-size: 0.85rem;
+  }
+
+  .parcel-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    color: #1a202c; /* Ensure text is visible on light backgrounds */
   }
 
   .main-container {
