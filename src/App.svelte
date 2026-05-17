@@ -1,5 +1,5 @@
 <script>
-  import Map from "./Map.svelte";
+  import ParcelMap from "./ParcelMap.svelte";
   import SearchForm from "./SearchForm.svelte";
   import ParcelCarousel from "./ParcelCarousel.svelte";
 
@@ -55,19 +55,132 @@
         lon: lonSum / coords.length,
         lat: latSum / coords.length
       };
-    } else if (geometry.type === "MultiPolygon" && geometry.coordinates[0] && geometry.coordinates[0][0]) {
-      const coords = geometry.coordinates[0][0];
-      let lonSum = 0, latSum = 0;
-      coords.forEach(coord => {
-        lonSum += coord[0];
-        latSum += coord[1];
+    } else if (geometry.type === "MultiPolygon") {
+      let lonSum = 0, latSum = 0, count = 0;
+      geometry.coordinates.forEach(polygon => {
+        if (polygon[0]) {
+          polygon[0].forEach(coord => {
+            lonSum += coord[0];
+            latSum += coord[1];
+            count++;
+          });
+        }
       });
-      return {
-        lon: lonSum / coords.length,
-        lat: latSum / coords.length
-      };
+      if (count === 0) return null;
+      return { lon: lonSum / count, lat: latSum / count };
     }
     return null;
+  };
+
+  const getEdgeKey = (p1, p2) => {
+    const precision = 6;
+    const a = [p1[0].toFixed(precision), p1[1].toFixed(precision)];
+    const b = [p2[0].toFixed(precision), p2[1].toFixed(precision)];
+    const keyA = `${a[0]},${a[1]}`;
+    const keyB = `${b[0]},${b[1]}`;
+    return keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
+  };
+
+  const extractEdges = (geometry) => {
+    const edges = new Set();
+    if (!geometry) return edges;
+
+    const processRing = (ring) => {
+      for (let i = 0; i < ring.length - 1; i++) {
+        edges.add(getEdgeKey(ring[i], ring[i + 1]));
+      }
+    };
+
+    if (geometry.type === 'Polygon') {
+      geometry.coordinates.forEach(ring => processRing(ring));
+    } else if (geometry.type === 'MultiPolygon') {
+      geometry.coordinates.forEach(polygon => {
+        polygon.forEach(ring => processRing(ring));
+      });
+    }
+
+    return edges;
+  };
+
+  const buildAdjacencyGraph = (features) => {
+    const edgeToParcels = new Map();
+    const graph = new Map();
+
+    features.forEach((feature, i) => {
+      const edges = extractEdges(feature.geometry);
+      edges.forEach(edgeKey => {
+        if (!edgeToParcels.has(edgeKey)) edgeToParcels.set(edgeKey, new Set());
+        edgeToParcels.get(edgeKey).add(i);
+      });
+      graph.set(i, new Set());
+    });
+
+    for (const indices of edgeToParcels.values()) {
+      if (indices.size >= 2) {
+        const arr = [...indices];
+        for (let a = 0; a < arr.length; a++) {
+          for (let b = a + 1; b < arr.length; b++) {
+            graph.get(arr[a]).add(arr[b]);
+            graph.get(arr[b]).add(arr[a]);
+          }
+        }
+      }
+    }
+
+    return graph;
+  };
+
+  const findConnectedComponents = (graph) => {
+    const visited = new Set();
+    const components = [];
+
+    for (const [node] of graph) {
+      if (visited.has(node)) continue;
+      const component = [];
+      const stack = [node];
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (visited.has(current)) continue;
+        visited.add(current);
+        component.push(current);
+        for (const neighbor of graph.get(current)) {
+          if (!visited.has(neighbor)) stack.push(neighbor);
+        }
+      }
+      components.push(component);
+    }
+
+    return components;
+  };
+
+  const createCombinedParcel = (parcels, minThumb, maxThumb) => {
+    const totalArea = parcels.reduce((sum, p) => sum + (p.properties?.surface_parcelle || 0), 0);
+    if (totalArea < minThumb || totalArea > maxThumb) return null;
+
+    const coordinates = [];
+    for (const p of parcels) {
+      if (p.geometry.type === 'Polygon') {
+        coordinates.push(p.geometry.coordinates);
+      } else if (p.geometry.type === 'MultiPolygon') {
+        coordinates.push(...p.geometry.coordinates);
+      }
+    }
+
+    const combinedId = parcels.map(p => p.id).join('+');
+    const center = getCenterCoordinates({ type: 'MultiPolygon', coordinates });
+
+    return {
+      type: 'Feature',
+      id: combinedId,
+      properties: {
+        isCombined: true,
+        combinedIds: parcels.map(p => p.id),
+        combinedParcelCount: parcels.length,
+        surface_parcelle: totalArea,
+        coordinates: center,
+      },
+      geometry: { type: 'MultiPolygon', coordinates }
+    };
   };
 
   const searchProperties = async () => {
@@ -109,18 +222,45 @@
         return feature;
       });
 
-      features = features.filter((feature) => {
-        const area = feature.properties?.surface_parcelle || 0;
-        return area >= minThumb && area <= maxThumb;
-      });
+      const MAX_COMBINATION_SIZE = 4;
+      const combinableThreshold = Math.max(minThumb * 0.05, 30);
 
-      features.sort((a, b) => {
+      let individualCandidates = [];
+      let combinablePool = [];
+
+      for (const feature of features) {
+        const area = feature.properties?.surface_parcelle || 0;
+        if (area >= minThumb && area <= maxThumb) {
+          individualCandidates.push(feature);
+        } else if (area < minThumb && area >= combinableThreshold) {
+          combinablePool.push(feature);
+        }
+      }
+
+      individualCandidates.sort((a, b) => {
         const areaA = a.properties?.surface_parcelle || 0;
         const areaB = b.properties?.surface_parcelle || 0;
         return areaB - areaA;
       });
 
-      const parcelsToProcess = features.slice(0, 20);
+      const graph = buildAdjacencyGraph(combinablePool);
+      const components = findConnectedComponents(graph);
+      const combinedFeatures = [];
+
+      for (const component of components) {
+        if (component.length < 2 || component.length > MAX_COMBINATION_SIZE) continue;
+        const parcels = component.map(i => combinablePool[i]);
+        const combined = createCombinedParcel(parcels, minThumb, maxThumb);
+        if (combined) combinedFeatures.push(combined);
+      }
+
+      combinedFeatures.sort((a, b) => {
+        const areaA = a.properties?.surface_parcelle || 0;
+        const areaB = b.properties?.surface_parcelle || 0;
+        return areaB - areaA;
+      });
+
+      const parcelsToProcess = individualCandidates.slice(0, 20);
       const parcelsWithAddresses = await Promise.all(
         parcelsToProcess.map(async (feature) => {
           const center = getCenterCoordinates(feature.geometry);
@@ -133,7 +273,20 @@
         })
       );
 
-      results = [...parcelsWithAddresses, ...features.slice(20)];
+      const combinedToProcess = combinedFeatures.slice(0, 20);
+      const combinedWithAddresses = await Promise.all(
+        combinedToProcess.map(async (feature) => {
+          const center = getCenterCoordinates(feature.geometry);
+          if (center) {
+            const address = await getAddressFromCoordinates(center.lon, center.lat);
+            feature.properties.address = address;
+            feature.properties.coordinates = center;
+          }
+          return feature;
+        })
+      );
+
+      results = [...parcelsWithAddresses, ...individualCandidates.slice(20), ...combinedWithAddresses, ...combinedFeatures.slice(20)];
     } catch (err) {
       console.error("Error fetching data:", err);
       error = "Error fetching data. Please check the INSEE code and try again.";
@@ -197,7 +350,7 @@
 
 <main class="main-container">
   <div class="map-container">
-    <Map
+    <ParcelMap
       {results}
       {selectedParcel}
     />

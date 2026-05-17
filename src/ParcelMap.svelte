@@ -147,6 +147,18 @@ delete window.leafletMap;
   // Function to style the GeoJSON features
   function styleFeature(feature) {
     const isSelected = selectedParcel && selectedParcel.id === feature.id;
+    const isCombined = feature.properties?.isCombined;
+    
+    if (isCombined) {
+      return {
+        fillColor: isSelected ? '#d4a017' : '#8e44ad',
+        weight: isSelected ? 3 : 2,
+        opacity: 1,
+        color: isSelected ? '#fff' : '#6c3483',
+        fillOpacity: isSelected ? 0.6 : 0.25,
+        dashArray: isSelected ? null : '5, 5'
+      };
+    }
     
     return {
       fillColor: isSelected ? '#4CAF50' : '#3388ff',
@@ -185,7 +197,7 @@ delete window.leafletMap;
   // Function to handle feature click
   function onEachFeature(feature, layer) {
     if (feature.properties) {
-      const { surface_parcelle, section, number } = feature.properties;
+      const isCombined = feature.properties.isCombined;
       
       // Create a basic popup first (will be updated with address)
       const initialPopupContent = `
@@ -203,19 +215,36 @@ delete window.leafletMap;
           const center = layer.getBounds().getCenter();
           const address = await getAddressFromCoords(center.lat, center.lng);
           
-          const popupContent = `
-            <div style="min-width: 180px; max-width: 250px;">
-              <div style="margin-bottom: 6px; font-weight: 600; font-size: 1.05em;">
-                ${address}
-              </div>
-              <div style="border-top: 1px solid #eee; padding-top: 4px; margin-bottom: 4px;">
-                <div><strong>Parcel ID:</strong> ${feature.id || 'N/A'}</div>
-                <div><strong>Area:</strong> ${surface_parcelle ? `${surface_parcelle} m²` : 'N/A'}</div>
-                <div><strong>Section:</strong> ${section || 'N/A'}</div>
-                ${number ? `<div><strong>Number:</strong> ${number}</div>` : ''}
-              </div>
-            </div>
-          `;
+          let popupContent;
+          if (isCombined) {
+            const ids = feature.properties.combinedIds || [];
+            popupContent = `
+              <div style="min-width: 180px; max-width: 250px;">
+                <div style="margin-bottom: 6px; font-weight: 600; font-size: 1.05em; color: #8e44ad;">
+                  Combined parcel
+                </div>
+                <div style="margin-bottom: 6px;">${address}</div>
+                <div style="border-top: 1px solid #eee; padding-top: 4px; margin-bottom: 4px;">
+                  <div><strong>Total Area:</strong> ${feature.properties.surface_parcelle || 'N/A'} m²</div>
+                  <div><strong>Parcels combined:</strong> ${feature.properties.combinedParcelCount}</div>
+                  <div style="font-size: 0.85em; color: #666; margin-top: 4px;">${ids.join(', ')}</div>
+                </div>
+              </div>`;
+          } else {
+            const { surface_parcelle, section, number } = feature.properties;
+            popupContent = `
+              <div style="min-width: 180px; max-width: 250px;">
+                <div style="margin-bottom: 6px; font-weight: 600; font-size: 1.05em;">
+                  ${address}
+                </div>
+                <div style="border-top: 1px solid #eee; padding-top: 4px; margin-bottom: 4px;">
+                  <div><strong>Parcel ID:</strong> ${feature.id || 'N/A'}</div>
+                  <div><strong>Area:</strong> ${surface_parcelle ? `${surface_parcelle} m²` : 'N/A'}</div>
+                  <div><strong>Section:</strong> ${section || 'N/A'}</div>
+                  ${number ? `<div><strong>Number:</strong> ${number}</div>` : ''}
+                </div>
+              </div>`;
+          }
           
           // Update the popup content
           layer.setPopupContent(popupContent);

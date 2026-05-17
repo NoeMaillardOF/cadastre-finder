@@ -94,14 +94,17 @@
           tabindex="0"
         >
           <div class="parcel-card">
-            <div class="parcel-area">
+            <div class="parcel-area {parcel.properties?.isCombined ? 'combined' : ''}">
               <span class="area-value"
                 >{Math.round(parcel.properties?.surface_parcelle) || "N/A"}</span
               >
               <span class="area-unit">m²</span>
             </div>
             <div class="parcel-details">
-              {#if parcel.properties?.type !== undefined}
+              {#if parcel.properties?.isCombined}
+                <span class="parcel-type combined-badge">Combined</span>
+                <span class="parcel-count">{parcel.properties.combinedParcelCount} parcels</span>
+              {:else if parcel.properties?.type !== undefined}
                 <span class="parcel-type">
                   {parcel.properties.type === "B" ? "En dur" : parcel.properties.type === "L" ? "Léger" : parcel.properties.type}
                   {#if parcel.properties.nom}
@@ -346,6 +349,22 @@
     text-align: center;
     border: 1px solid #e0f2fe;
     color: #0369a1;
+  }
+
+  .parcel-area.combined {
+    background: #f3e8ff;
+    border-color: #d8b4fe;
+    color: #7c3aed;
+  }
+
+  .parcel-count {
+    font-weight: 500;
+    color: #7c3aed;
+    font-size: 0.8rem;
+  }
+
+  .combined-badge {
+    color: #7c3aed !important;
   }
 
   .parcel-id {
