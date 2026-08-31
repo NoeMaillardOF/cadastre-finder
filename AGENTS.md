@@ -30,7 +30,7 @@ No test framework, linter, or formatter is configured.
 - **External APIs called from the browser** (no backend):
   - `geo.api.gouv.fr` — commune search
   - `api-adresse.data.gouv.fr` — reverse geocoding
-  - `cadastre.data.gouv.fr` — parcel GeoJSON (gzipped)
+  - `cadastre.s3.rbx.io.cloud.ovh.net` — parcel GeoJSON (gzipped). Use the S3 bucket directly, not `cadastre.data.gouv.fr`: the latter 302s here without an `Access-Control-Allow-Origin` header on the redirect, which the browser blocks.
   - `nominatim.openstreetmap.org` — reverse geocoding (in Map.svelte)
   - OpenStreetMap / ArcGIS tile layers (in Map.svelte)
 

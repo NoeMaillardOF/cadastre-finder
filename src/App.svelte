@@ -194,13 +194,12 @@
 
     try {
       const department = inseeCode.substring(0, inseeCode.length === 5 ? 2 : 3);
-      const url = `https://cadastre.data.gouv.fr/data/etalab-cadastre/2025-09-01/geojson/communes/${department}/${inseeCode}/cadastre-${inseeCode}-parcelles.json.gz`;
+      // cadastre.data.gouv.fr 302-redirects to the OVH S3 bucket but sends no
+      // Access-Control-Allow-Origin on the redirect itself, so the browser
+      // blocks it. The S3 bucket does send `ACAO: *` — hit it directly.
+      const url = `https://cadastre.s3.rbx.io.cloud.ovh.net/etalab-cadastre/2025-09-01/geojson/communes/${department}/${inseeCode}/cadastre-${inseeCode}-parcelles.json.gz`;
 
-      const response = await fetch(url, {
-        headers: {
-          "Accept-Encoding": "gzip",
-        },
-      });
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
